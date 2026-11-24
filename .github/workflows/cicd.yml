@@ -1,0 +1,84 @@
+# Name shown in the GitHub Actions tab.
+name: Node CI/CD
+
+# Run this workflow whenever code is pushed to the main branch.
+on:
+  push:
+    branches:
+      - main
+
+# Shared image name; the Docker Hub username is supplied from a repository secret.
+env:
+  IMAGE_NAME: cicdpipeline
+
+# A job is a group of steps executed together on one runner.
+jobs:
+  build-deploy:
+    # GitHub-hosted Linux runner supports Node.js and Docker CLI commands.
+    runs-on: ubuntu-latest
+
+    # Steps run sequentially: checkout, build, publish the image, then deploy it.
+    steps:
+      # Fetch the repository contents onto the runner.
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      # Install the specified Node.js runtime and cache npm packages between runs.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Match the Node.js version used by the Docker image.
+          node-version: 22
+          # Use package-lock.json to cache npm dependencies.
+          cache: npm
+
+      # Install exactly the dependency versions recorded in package-lock.json.
+      - name: Install dependencies
+        run: npm ci
+
+      # Bundle the server using the project's build script; fail before publishing if it fails.
+      - name: Build Project
+        run: npm run build
+
+      # Authenticate to Docker Hub so this workflow can push the image.
+      - name: Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          # Set these values in GitHub repository Actions secrets.
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Build the Docker image and tag it with the Docker Hub username and repository.
+      - name: Build Docker Image
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest .
+
+      # Upload the image so the EC2 server can pull the latest version.
+      - name: Push Image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
+      # Connect to the EC2 host over SSH and replace the running container.
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          # Set these connection values in GitHub repository Actions secrets.
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          # Commands run remotely on EC2 after a successful image push.
+          script: |
+            # Download the image that was just pushed to Docker Hub.
+            docker pull ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
+            # Remove the old container if it exists; allow first deployment to continue.
+            docker stop cicdpipeline || true
+            docker rm cicdpipeline || true
+
+            # Start the updated app, restart it after host reboots, and publish port 4000.
+            docker run -d \
+              --name cicdpipeline \
+              --restart unless-stopped \
+              -p 4000:4000 \
+              ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
+            # Remove unused image layers to reclaim disk space on the EC2 host.
+            docker image prune -f
