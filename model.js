@@ -1,5 +1,5 @@
 const model =() => {
-  return "I love you sanya batra";
+  return "welcome to my CI/CD pipeline";
 }
 
 export default model;
