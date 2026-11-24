@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@v7
 
       # Install the specified Node.js runtime and cache npm packages between runs.
+      # you can Remove this setup to avoid repeating that work because the Dockerfile already does it.
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
@@ -33,10 +34,12 @@ jobs:
           cache: npm
 
       # Install exactly the dependency versions recorded in package-lock.json.
+      # you can Remove this setup to avoid repeating that work because the Dockerfile already does it.
       - name: Install dependencies
         run: npm ci
 
       # Bundle the server using the project's build script; fail before publishing if it fails.
+      # you can Remove this setup to avoid repeating that work because the Dockerfile already does it.
       - name: Build Project
         run: npm run build
 
