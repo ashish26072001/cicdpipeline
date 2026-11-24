@@ -1,5 +1,5 @@
 const model =() => {
-  return "Welcome to the CICD Pipelineeeeee";
+  return "Welcome to the CICD Pipeline";
 }
 
 export default model;
